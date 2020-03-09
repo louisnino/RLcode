@@ -64,18 +64,17 @@ for i in range(num_episodes):
 
         ## 更新Q表格
         Q[s, a] = Q[s, a] + lr * (r + lambd * np.max(Q[s1, :]) - Q[s, a])
-
-        # rAll累加当前的收获。
-        rAll += r
-
+  
+        rAll += r               # rAll累加当前的收获。
         s = s1                  # 把下一状态赋值给s，准备开始下一步。
         if d ==True:            # 如果已经到达最终状态，就跳出for循环。(开始下一次迭代)
             break
 
 ##=================更新结束，打印结果=====================##
     #每次的总收获都放到rlist。可以通过打印看看算法效率。
-    rList.append(rAll)          
-    running_reward = r if running_reward is None else running_reward * 0.99 + r * 0.01
+    rList.append(rAll)
+    #每一次迭代获得的总收获rAll,会以0.01的份额加入到running_reward。(原代码这里rAll用了r，个人认为是rAll更合适)
+    running_reward = rAll if running_reward is None else running_reward * 0.99 + rAll * 0.01
     print("Episode [%d/%d] sum reward: %f running reward: %f took: %.5fs " % \
         (i, num_episodes, rAll, running_reward, time.time() - episode_time))
 
