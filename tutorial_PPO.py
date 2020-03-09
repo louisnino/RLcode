@@ -46,35 +46,37 @@ args = parser.parse_args()
 
 #####################  hyper parameters  ####################
 
-ENV_NAME = 'Pendulum-v0'  # environment name
-RANDOMSEED = 1  # random seed
+ENV_NAME = 'Pendulum-v0'        # environment name
+RANDOMSEED = 1                  # random seed
 
-EP_MAX = 1000  # total number of episodes for training
-EP_LEN = 200  # total number of steps for each episode
-GAMMA = 0.9  # reward discount
-A_LR = 0.0001  # learning rate for actor
-C_LR = 0.0002  # learning rate for critic
-BATCH = 32  # update batchsize
-A_UPDATE_STEPS = 10  # actor update steps
-C_UPDATE_STEPS = 10  # critic update steps
-S_DIM, A_DIM = 3, 1  # state dimension, action dimension
-EPS = 1e-8  # epsilon
+EP_MAX = 1000                   # total number of episodes for training
+EP_LEN = 200                    # total number of steps for each episode
+GAMMA = 0.9                     # reward discount
+A_LR = 0.0001                   # learning rate for actor
+C_LR = 0.0002                   # learning rate for critic
+BATCH = 32                      # update batchsize
+A_UPDATE_STEPS = 10     # actor update steps
+C_UPDATE_STEPS = 10     # critic update steps
+S_DIM, A_DIM = 3, 1     # state dimension, action dimension
+EPS = 1e-8              # epsilon
+
+# 注意：这里是PPO1和PPO2的相关的参数。
 METHOD = [
-    dict(name='kl_pen', kl_target=0.01, lam=0.5),  # KL penalty  PPO1
-    dict(name='clip', epsilon=0.2),  # Clipped surrogate objective, find this is better  PPO2
-][1]  # choose the method for optimization
+    dict(name='kl_pen', kl_target=0.01, lam=0.5),   # KL penalty  PPO1
+    dict(name='clip', epsilon=0.2),                 # Clipped surrogate objective, find this is better  PPO2
+][1]                                                # choose the method for optimization
 
 ###############################  PPO  ####################################
 
 
 class PPO(object):
     '''
-    PPO class
+    PPO 类
     '''
 
     def __init__(self):
 
-        # critic
+        # 构建critic网络：
         # 输入state，输出V值
         tfs = tl.layers.Input([None, S_DIM], tf.float32, 'state')
         l1 = tl.layers.Dense(100, tf.nn.relu)(tfs)
@@ -82,8 +84,8 @@ class PPO(object):
         self.critic = tl.models.Model(tfs, v)
         self.critic.train()
 
-        # actor
-        # actor有两个actor 和 actor_old
+        # 构建actor网络：
+        # actor有两个actor 和 actor_old， actor_old的主要功能是记录行为策略的版本。
         # 输入时state，输出是描述动作分布的mu和sigma
         self.actor = self._build_anet('pi', trainable=True)
         self.actor_old = self._build_anet('oldpi', trainable=False)
@@ -92,20 +94,18 @@ class PPO(object):
 
     def a_train(self, tfs, tfa, tfadv):
         '''
-        Update policy network
-        :param tfs: state
-        :param tfa: act
-        :param tfadv: advantage
-        :return:
+        更新策略网络(policy network)
         '''
         # 输入时s，a，td-error。这个和AC是类似的。
-        tfs = np.array(tfs, np.float32)
-        tfa = np.array(tfa, np.float32)
-        tfadv = np.array(tfadv, np.float32)
+        tfs = np.array(tfs, np.float32)         #state
+        tfa = np.array(tfa, np.float32)         #action
+        tfadv = np.array(tfadv, np.float32)     #td-error
+
+
         with tf.GradientTape() as tape:
-            # 还原计算过程。
-            # 这里是重点！！！！
-            # 我们要计算两个分布的差距有点多大。这里其实也可以
+
+            # 【敲黑板】这里是重点！！！！
+            # 我们需要从两个不同网络，构建两个正态分布pi，oldpi。
             mu, sigma = self.actor(tfs)
             pi = tfp.distributions.Normal(mu, sigma)
 
@@ -119,9 +119,10 @@ class PPO(object):
             # 在AC或者PG，我们是以1,0作为更新目标，缩小动作概率到1or0的差距
             # 而PPO可以想作是，以oldpi.prob(tfa)出发，不断远离（增大or缩小）的过程。
             ratio = pi.prob(tfa) / (oldpi.prob(tfa) + EPS)
-            # 这个的意义和带参数是一样的。
+            # 这个的意义和带参数更新是一样的。
             surr = ratio * tfadv
 
+            # 我们还不能让两个分布差异太大。
             # PPO1
             if METHOD['name'] == 'kl_pen':
                 tflam = METHOD['lam']
@@ -129,7 +130,7 @@ class PPO(object):
                 kl_mean = tf.reduce_mean(kl)
                 aloss = -(tf.reduce_mean(surr - tflam * kl))
             # PPO2：
-            # 这样理解就很形象了，就是不希望两个差距太大。
+            # 很直接，就是直接进行截断。
             else:  # clipping method, find this is better
                 aloss = -tf.reduce_mean(
                     tf.minimum(ratio * tfadv,  #surr
@@ -144,37 +145,31 @@ class PPO(object):
 
     def update_old_pi(self):
         '''
-        Update old policy parameter
-        :return: None
+        更新actor_old参数。
         '''
         for p, oldp in zip(self.actor.trainable_weights, self.actor_old.trainable_weights):
             oldp.assign(p)
 
     def c_train(self, tfdc_r, s):
         '''
-        Update actor network
-        :param tfdc_r: cumulative reward
-        :param s: state
-        :return: None
+        更新Critic网络
         '''
-        tfdc_r = np.array(tfdc_r, dtype=np.float32)
+        tfdc_r = np.array(tfdc_r, dtype=np.float32) #tfdc_r可以理解为PG中就是G，通过回溯计算。只不过这PPO用TD而已。
+
         with tf.GradientTape() as tape:
             v = self.critic(s)
-            advantage = tfdc_r - v
+            advantage = tfdc_r - v                  # 就是我们说的td-error
             closs = tf.reduce_mean(tf.square(advantage))
-        # print('tfdc_r value', tfdc_r)
+
         grad = tape.gradient(closs, self.critic.trainable_weights)
         self.critic_opt.apply_gradients(zip(grad, self.critic.trainable_weights))
 
     def cal_adv(self, tfs, tfdc_r):
         '''
-        Calculate advantage
-        :param tfs: state
-        :param tfdc_r: cumulative reward
-        :return: advantage
+        计算advantage，也就是td-error
         '''
         tfdc_r = np.array(tfdc_r, dtype=np.float32)
-        advantage = tfdc_r - self.critic(tfs)   # advantage = r - gamma * V(s_)
+        advantage = tfdc_r - self.critic(tfs)           # advantage = r - gamma * V(s_)
         return advantage.numpy()
 
     def update(self, s, a, r):
@@ -192,7 +187,7 @@ class PPO(object):
         # adv = (adv - adv.mean())/(adv.std()+1e-6)  # sometimes helpful
 
         # update actor
-        # PPO1:
+        #### PPO1比较复杂:
         # 动态调整参数 adaptive KL penalty
         if METHOD['name'] == 'kl_pen':
             for _ in range(A_UPDATE_STEPS):
@@ -206,11 +201,14 @@ class PPO(object):
             METHOD['lam'] = np.clip(
                 METHOD['lam'], 1e-4, 10
             )  # sometimes explode, this clipping is MorvanZhou's solution
-        else:  # clipping method, find this is better (OpenAI's paper)
+
+        #### PPO2比较简单，直接就进行a_train更新:
+        # clipping method, find this is better (OpenAI's paper)
+        else:  
             for _ in range(A_UPDATE_STEPS):
                 self.a_train(s, a, adv)
 
-        # update critic
+        # 更新 critic
         for _ in range(C_UPDATE_STEPS):
             self.c_train(r, s)
 
@@ -243,26 +241,17 @@ class PPO(object):
         Choose action
         :param s: state
         :return: clipped act
-        '''
-        # 通过actor计算出分布的mu和sigma
-        # 然后sample动作，并进行裁剪。
-
-        s = s[np.newaxis, :].astype(np.float32)
-        mu, sigma = self.actor(s)
-        pi = tfp.distributions.Normal(mu, sigma)
-        #a = pi.sample(1)
-        #print('=====',a.shape)
-        a = tf.squeeze(pi.sample(1), axis=0)[0]  # choosing action
-        #print('=====',a)
-        return np.clip(a, -2, 2)
+        '''           
+        s = s[np.newaxis, :].astype(np.float32) 
+        mu, sigma = self.actor(s)                   # 通过actor计算出分布的mu和sigma
+        pi = tfp.distributions.Normal(mu, sigma)    # 用mu和sigma构建正态分布
+        a = tf.squeeze(pi.sample(1), axis=0)[0]     # 根据概率分布随机出动作
+        return np.clip(a, -2, 2)                    # 最后sample动作，并进行裁剪。
 
     def get_v(self, s):
         '''
-        Compute value
-        :param s: state
-        :return: value
+        计算value值。
         '''
-        # 计算value值。
         s = s.astype(np.float32)
         if s.ndim < 2: s = s[np.newaxis, :]  # 要和输入的形状对应。
         return self.critic(s)[0, 0]
@@ -310,28 +299,31 @@ if __name__ == '__main__':
             t0 = time.time()
             for t in range(EP_LEN):  # in one episode
                 # env.render()
-                a = ppo.choose_action(s)
+                a = ppo.choose_action(s)        
                 s_, r, done, _ = env.step(a)
                 buffer_s.append(s)
                 buffer_a.append(a)
-                buffer_r.append((r + 8) / 8)  # normalize reward, find to be useful
+                buffer_r.append((r + 8) / 8)    # 对奖励进行归一化。有时候会挺有用的。所以我们说说，奖励是个主观的东西。
                 s = s_
                 ep_r += r
 
-                # update ppo
-                if (t + 1) % BATCH == 0 or t == EP_LEN - 1:
-                    # N步更新的方法。
-                    # 计算每个state的v_s_
-                    v_s_ = ppo.get_v(s_)
-                    discounted_r = []
+                # # N步更新的方法，每BATCH步了就可以进行一次更新
+                if (t + 1) % BATCH == 0 or t == EP_LEN - 1:                  
+                    v_s_ = ppo.get_v(s_)        # 计算n步中最后一个state的v_s_
+
+                    # 和PG一样，向后回溯计算。
+                    discounted_r = []           
                     for r in buffer_r[::-1]:
                         v_s_ = r + GAMMA * v_s_
                         discounted_r.append(v_s_)
                     discounted_r.reverse()
 
+                    # 所以这里的br并不是每个状态的reward，而是通过回溯计算的V值
                     bs, ba, br = np.vstack(buffer_s), np.vstack(buffer_a), np.array(discounted_r)[:, np.newaxis]
                     buffer_s, buffer_a, buffer_r = [], [], []
                     ppo.update(bs, ba, br)
+
+            
             if ep == 0:
                 all_ep_r.append(ep_r)
             else:
@@ -343,6 +335,7 @@ if __name__ == '__main__':
                 )
             )
 
+            #画图
             plt.ion()
             plt.cla()
             plt.title('PPO')
