@@ -29,18 +29,35 @@ class Double_DQN():
         self.learning_rate = 1e-3           #学习率
         self.opt = tf.optimizers.Adam(self.learning_rate)  #优化器
         self.is_rend = False                #默认不渲染，当达到一定次数后，开始渲染。
-
+    '''
     def get_model(self):
-        '''
-        创建网络
-            输入：S
-            输出：所有动作的Q值
-        '''
+        #创建网络
+        #    输入：S
+        #    输出：所有动作的Q值
         self.input = tl.layers.Input(shape=[None,self.input_dim])
         self.h1 = tl.layers.Dense(32, tf.nn.relu, W_init=tf.initializers.GlorotUniform())(self.input)
         self.h2 = tl.layers.Dense(16, tf.nn.relu, W_init=tf.initializers.GlorotUniform())(self.h1)
         self.output = tl.layers.Dense(2,act=None, W_init=tf.initializers.GlorotUniform())(self.h2)
         return tl.models.Model(inputs=self.input,outputs=self.output)
+
+    '''
+    
+    # dueling DQN只改了网络架构。
+    def get_model(self):
+        #第一部分
+        input = tl.layers.Input(shape=[None,self.input_dim])
+        h1 = tl.layers.Dense(16, tf.nn.relu, W_init=tf.initializers.GlorotUniform())(input)
+        h2 = tl.layers.Dense(16, tf.nn.relu, W_init=tf.initializers.GlorotUniform())(h1)
+        #第二部分
+        svalue = tl.layers.Dense(2,)(h2)
+        #第三部分
+        avalue = tl.layers.Dense(2,)(h2)                                                    #计算avalue
+        mean = tl.layers.Lambda(lambda x: tf.reduce_mean(x,axis=1,keepdims=True))(avalue)   #用Lambda层，计算avg(a)
+        advantage = tl.layers.ElementwiseLambda(lambda x,y: x-y)([avalue,mean])             #a - avg(a)
+
+        output = tl.layers.ElementwiseLambda(lambda x,y: x+y)([svalue,avalue])               
+        return tl.models.Model(inputs=input,outputs=output)
+    
 
     def update_epsilon(self):
         '''
