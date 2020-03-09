@@ -69,13 +69,13 @@ args = parser.parse_args()
 #####################  hyper parameters  ####################
 
 OUTPUT_GRAPH = False
-MAX_EPISODE = 3000  # number of overall episodes for training
+MAX_EPISODE = 3000              # number of overall episodes for training
 DISPLAY_REWARD_THRESHOLD = 100  # renders environment if running reward is greater then this threshold
-MAX_EP_STEPS = 1000  # maximum time step in one episode
-RENDER = False  # rendering wastes time
-LAMBDA = 0.9  # reward discount in TD error
-LR_A = 0.001  # learning rate for actor
-LR_C = 0.01  # learning rate for critic
+MAX_EP_STEPS = 1000             # maximum time step in one episode
+RENDER = False                  # rendering wastes time
+LAMBDA = 0.9                    # reward discount in TD error
+LR_A = 0.001                    # learning rate for actor
+LR_C = 0.01                     # learning rate for critic
 
 ###############################  Actor-Critic  ####################################
 
@@ -83,7 +83,8 @@ LR_C = 0.01  # learning rate for critic
 class Actor(object):
 
     def __init__(self, n_features, n_actions, lr=0.001):
-
+        
+        # 创建Actor网络
         def get_model(inputs_shape):
             ni = tl.layers.Input(inputs_shape, name='state')
             nn = tl.layers.Dense(
@@ -99,22 +100,23 @@ class Actor(object):
         self.model.train()
         self.optimizer = tf.optimizers.Adam(lr)
 
+    # Actor学习
     def learn(self, s, a, td):
         with tf.GradientTape() as tape:
             _logits = self.model(np.array([s]))
-            ## cross-entropy loss weighted by td-error (advantage),
-            # the cross-entropy mearsures the difference of two probability distributions: the predicted logits and sampled action distribution,
-            # then weighted by the td-error: small difference of real and predict actions for large td-error (advantage); and vice versa.
+            ## 带权重更新。
             _exp_v = tl.rein.cross_entropy_reward_loss(logits=_logits, actions=[a], rewards=td[0])
         grad = tape.gradient(_exp_v, self.model.trainable_weights)
         self.optimizer.apply_gradients(zip(grad, self.model.trainable_weights))
         return _exp_v
 
+    # 按照分布随机动作。
     def choose_action(self, s):
         _logits = self.model(np.array([s]))
         _probs = tf.nn.softmax(_logits).numpy()
         return tl.rein.choice_action_by_probs(_probs.ravel())  # sample according to probability distribution
 
+    # 贪婪算法。
     def choose_action_greedy(self, s):
         _logits = self.model(np.array([s]))  # logits: probability distribution of actions
         _probs = tf.nn.softmax(_logits).numpy()
@@ -131,6 +133,7 @@ class Critic(object):
 
     def __init__(self, n_features, lr=0.01):
 
+        # 创建Critic网络。
         def get_model(inputs_shape):
             ni = tl.layers.Input(inputs_shape, name='state')
             nn = tl.layers.Dense(
@@ -147,16 +150,17 @@ class Critic(object):
 
         self.optimizer = tf.optimizers.Adam(lr)
 
+    # Critic学习
     def learn(self, s, r, s_):
         v_ = self.model(np.array([s_]))
         with tf.GradientTape() as tape:
             v = self.model(np.array([s]))
+            ## [敲黑板]计算TD-error
             ## TD_error = r + lambd * V(newS) - V(S)
             td_error = r + LAMBDA * v_ - v
             loss = tf.square(td_error)
         grad = tape.gradient(loss, self.model.trainable_weights)
         self.optimizer.apply_gradients(zip(grad, self.model.trainable_weights))
-
         return td_error
 
     def save_ckpt(self):  # save trained weights
@@ -193,6 +197,7 @@ if __name__ == '__main__':
     # we need a good teacher, so the teacher should learn faster than the actor
     critic = Critic(n_features=N_F, lr=LR_C)
 
+    ## 训练部分
     if args.train:
         t0 = time.time()
         for i_episode in range(MAX_EPISODE):
@@ -208,6 +213,7 @@ if __name__ == '__main__':
 
                 s_new, r, done, info = env.step(a)
                 s_new = s_new.astype(np.float32)
+                # [敲黑板]，我们希望在濒死状态，可以减去一个大reward。让智能体学习如何力挽狂澜。
                 if done: r = -20
                 # these may helpful in some tasks
                 # if abs(s_new[0]) >= env.observation_space.high[0]:
@@ -218,9 +224,12 @@ if __name__ == '__main__':
 
                 all_r.append(r)
 
+                # Critic学习，并计算出td-error
                 td_error = critic.learn(
                     s, r, s_new
                 )  # learn Value-function : gradient = grad[r + lambda * V(s_new) - V(s)]
+
+                # actor学习
                 try:
                     for _ in range(1):
                         actor.learn(s, a, td_error)  # learn Policy : true_gradient = grad[logPi(s, a) * td_error]
@@ -267,6 +276,7 @@ if __name__ == '__main__':
         actor.save_ckpt()
         critic.save_ckpt()
 
+    ## 测试部分
     if args.test:
         actor.load_ckpt()
         critic.load_ckpt()

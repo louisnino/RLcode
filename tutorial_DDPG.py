@@ -66,7 +66,6 @@ class DDPG(object):
     """
     DDPG class
     """
-
     def __init__(self, a_dim, s_dim, a_bound):
         # memory用于储存跑的数据的数组：
         # 保存个数MEMORY_CAPACITY，s_dim * 2 + a_dim + 1：分别是两个state，一个action，和一个reward
