@@ -44,12 +44,12 @@ args = parser.parse_args()
 
 #####################  hyper parameters  ####################
 
-ENV_NAME = 'CartPole-v0'  # environment name
-RANDOMSEED = 1  # random seed
+ENV_NAME = 'CartPole-v0'    # 定义环境
+RANDOMSEED = 1              # 设置随机种子。建议大家都设置，这样试验可以重现。
 
-DISPLAY_REWARD_THRESHOLD = 400  # renders environment if total episode reward is greater then this threshold
-RENDER = False  # rendering wastes time
-num_episodes = 2
+DISPLAY_REWARD_THRESHOLD = 400  # 如果奖励超过DISPLAY_REWARD_THRESHOLD，就开始渲染
+RENDER = False                  # 开始的时候，不渲染游戏。
+num_episodes = 2                # 游戏迭代次数
 
 ###############################  PG  ####################################
 
@@ -60,18 +60,20 @@ class PolicyGradient:
     """
 
     def __init__(self, n_features, n_actions, learning_rate=0.01, reward_decay=0.95):
-        self.n_actions = n_actions
-        self.n_features = n_features
-        self.lr = learning_rate
-        self.gamma = reward_decay
+        # 定义相关参数
+        self.n_actions = n_actions      #动作
+        self.n_features = n_features    #环境特征数量
+        self.lr = learning_rate         #学习率
+        self.gamma = reward_decay       #折扣
 
+        #用于保存每个ep的数据。
         self.ep_obs, self.ep_as, self.ep_rs = [], [], []
 
         def get_model(inputs_shape):
             """
-            Build a neural network model.
-            :param inputs_shape: state_shape
-            :return: act
+            创建一个神经网络
+            输入: state
+            输出: act
             """
             with tf.name_scope('inputs'):
                 self.tf_obs = tl.layers.Input(inputs_shape, tf.float32, name="observations")
@@ -95,30 +97,26 @@ class PolicyGradient:
 
     def choose_action(self, s):
         """
-        choose action with probabilities.
-        :param s: state
-        :return: act
+        用神经网络输出的**策略pi**，选择动作。
+        输入: state
+        输出: act
         """
-        _logits = self.model(np.array([s], np.float32))
-        _probs = tf.nn.softmax(_logits).numpy()
-        return tl.rein.choice_action_by_probs(_probs.ravel())
+        _logits = self.model(np.array([s], np.float32))     
+        _probs = tf.nn.softmax(_logits).numpy()             
+        return tl.rein.choice_action_by_probs(_probs.ravel())   #根据策略PI选择动作。
 
     def choose_action_greedy(self, s):
         """
-        choose action with greedy policy
-        :param s: state
-        :return: act
+        贪心算法：直接用概率最大的动作
+        输入: state
+        输出: act
         """
         _probs = tf.nn.softmax(self.model(np.array([s], np.float32))).numpy()
         return np.argmax(_probs.ravel())
 
     def store_transition(self, s, a, r):
         """
-        store data in memory buffer
-        :param s: state
-        :param a: act
-        :param r: reward
-        :return:
+        保存数据到buffer中
         """
         self.ep_obs.append(np.array([s], np.float32))
         self.ep_as.append(a)
@@ -126,24 +124,24 @@ class PolicyGradient:
 
     def learn(self):
         """
-        update policy parameters via stochastic gradient ascent
-        :return: None
+        通过带权重更新方法更新神经网络
         """
-        # discount and normalize episode reward
+        # _discount_and_norm_rewards中存储的就是这一ep中，每个状态的G值。
         discounted_ep_rs_norm = self._discount_and_norm_rewards()
 
         with tf.GradientTape() as tape:
-
+            
+            # 把s放入神经网络，就算_logits
             _logits = self.model(np.vstack(self.ep_obs))
-            print(_logits)
-            # to maximize total reward (log_p * R) is to minimize -(log_p * R), and the tf only have minimize(loss)
-            neg_log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=_logits, labels=np.array(self.ep_as))
-            # this is negative log of chosen action
-
-            # or in this way:
+            
+            # 敲黑板
+            ## _logits和真正的动作的差距
+            # 差距也可以这样算,和sparse_softmax_cross_entropy_with_logits等价的:
             # neg_log_prob = tf.reduce_sum(-tf.log(self.all_act_prob)*tf.one_hot(self.tf_acts, self.n_actions), axis=1)
+            neg_log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=_logits, labels=np.array(self.ep_as))
 
-            loss = tf.reduce_mean(neg_log_prob * discounted_ep_rs_norm)  # reward guided loss
+            # 在原来的差距乘以G值，也就是以G值作为更新
+            loss = tf.reduce_mean(neg_log_prob * discounted_ep_rs_norm)
 
         grad = tape.gradient(loss, self.model.trainable_weights)
         self.optimizer.apply_gradients(zip(grad, self.model.trainable_weights))
@@ -153,17 +151,18 @@ class PolicyGradient:
 
     def _discount_and_norm_rewards(self):
         """
-        compute discount_and_norm_rewards
-        :return: discount_and_norm_rewards
+        通过回溯计算G值
         """
-        # discount episode rewards
+        # 先创建一个数组，大小和ep_rs一样。ep_rs记录的是每个状态的收获r。
         discounted_ep_rs = np.zeros_like(self.ep_rs)
         running_add = 0
+        # 从ep_rs的最后往前，逐个计算G
         for t in reversed(range(0, len(self.ep_rs))):
             running_add = running_add * self.gamma + self.ep_rs[t]
             discounted_ep_rs[t] = running_add
 
-        # normalize episode rewards
+        # 归一化G值。
+        # 我们希望G值有正有负，这样比较容易学习。
         discounted_ep_rs -= np.mean(discounted_ep_rs)
         discounted_ep_rs /= np.std(discounted_ep_rs)
         return discounted_ep_rs
@@ -213,6 +212,7 @@ if __name__ == '__main__':
     if args.train:
         reward_buffer = []
 
+        #=====开始更新训练=====
         for i_episode in range(num_episodes):
 
             episode_time = time.time()
@@ -222,12 +222,15 @@ if __name__ == '__main__':
                 if RENDER:
                     env.render()
 
+                # 注意：这里没有用贪婪算法，而是根据pi随机动作，以保证一定的探索性。
                 action = RL.choose_action(observation)
 
                 observation_, reward, done, info = env.step(action)
 
+                # 保存数据
                 RL.store_transition(observation, action, reward)
 
+                # PG用的是MC，如果到了最终状态
                 if done:
                     ep_rs_sum = sum(RL.ep_rs)
 
@@ -236,8 +239,9 @@ if __name__ == '__main__':
                     else:
                         running_reward = running_reward * 0.99 + ep_rs_sum * 0.01
 
+                    #如果超过DISPLAY_REWARD_THRESHOLD就开始渲染游戏吧。
                     if running_reward > DISPLAY_REWARD_THRESHOLD:
-                        RENDER = True  # rendering
+                        RENDER = True 
 
                     # print("episode:", i_episode, "  reward:", int(running_reward))
 
@@ -247,30 +251,33 @@ if __name__ == '__main__':
                     )
                     reward_buffer.append(running_reward)
 
+                    # 开始学习
                     vt = RL.learn()
 
+                    # 画图
                     plt.ion()
                     plt.cla()
                     plt.title('PG')
-                    plt.plot(reward_buffer, )  # plot the episode vt
+                    plt.plot(reward_buffer, )  
                     plt.xlabel('episode steps')
                     plt.ylabel('normalized state-action value')
                     plt.show()
                     plt.pause(0.1)
 
                     break
-
+                
+                # 开始新一步
                 observation = observation_
         RL.save_ckpt()
         plt.ioff()
         plt.show()
 
-    # test
+    # =====test=====
     RL.load_ckpt()
     observation = env.reset()
     while True:
         env.render()
-        action = RL.choose_action(observation)
+        action = RL.choose_action(observation)      # 这里建议大家可以改贪婪算法获取动作，对比效果是否有不同。
         observation, reward, done, info = env.step(action)
         if done:
             observation = env.reset()
