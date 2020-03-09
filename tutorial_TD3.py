@@ -294,7 +294,7 @@ class TD3_Trainer():
         self.update_cnt += 1        #计算更新次数
         state, action, reward, next_state, done = self.replay_buffer.sample(batch_size)     #从buffer sample数据
 
-        reward = reward[:, np.newaxis]  # expand dim
+        reward = reward[:, np.newaxis]  # expand dim， 调整形状，方便输入网络
         done = done[:, np.newaxis]
 
         # 输入s',从target_policy_net计算a'。注意这里有加noisy的
@@ -412,14 +412,14 @@ if __name__ == '__main__':
 
     # training loop
     if args.train:
-        frame_idx = 0       #总步数
-        rewards = []        #记录每个EP的总reward
+        frame_idx = 0                           #总步数
+        rewards = []                            #记录每个EP的总reward
         t0 = time.time()
-        while frame_idx < max_frames:        #小于最大步数，就继续训练
-            state = env.reset()              #初始化state
+        while frame_idx < max_frames:           #小于最大步数，就继续训练
+            state = env.reset()                 #初始化state
             state = state.astype(np.float32)    #整理state的类型
             episode_reward = 0
-            if frame_idx < 1:                #第一次的时候，要进行初始化trainer
+            if frame_idx < 1:                   #第一次的时候，要进行初始化trainer
                 print('intialize')
                 _ = td3_trainer.policy_net([state])  # need an extra call here to make inside functions be able to use model.forward
                 _ = td3_trainer.target_policy_net([state])
