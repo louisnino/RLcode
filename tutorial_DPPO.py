@@ -63,6 +63,8 @@ A_UPDATE_STEPS = 10  # actor update steps
 C_UPDATE_STEPS = 10  # critic update steps
 S_DIM, A_DIM = 3, 1  # state dimension, action dimension
 EPS = 1e-8  # epsilon
+
+#PPO1 和PPO2 的参数
 METHOD = [
     dict(name='kl_pen', kl_target=0.01, lam=0.5),  # KL penalty
     dict(name='clip', epsilon=0.2),  # Clipped surrogate objective, find this is better
@@ -106,7 +108,7 @@ class PPO(object):
         '''
         tfs = np.array(tfs, np.float32)
         tfa = np.array(tfa, np.float32)
-        tfadv = np.array(tfadv, np.float32)
+        tfadv = np.array(tfadv, np.float32)     #td-error
         with tf.GradientTape() as tape:
             mu, sigma = self.actor(tfs)
             pi = tfp.distributions.Normal(mu, sigma)
@@ -117,6 +119,7 @@ class PPO(object):
             # ratio = tf.exp(pi.log_prob(self.tfa) - oldpi.log_prob(self.tfa))
             ratio = pi.prob(tfa) / (oldpi.prob(tfa) + EPS)
             surr = ratio * tfadv
+
             ## PPO1
             if METHOD['name'] == 'kl_pen':
                 tflam = METHOD['lam']
@@ -180,7 +183,7 @@ class PPO(object):
         global GLOBAL_UPDATE_COUNTER
         while not COORD.should_stop():              #如果协调器没有停止
             if GLOBAL_EP < EP_MAX:                  #EP_MAX是最大更新次数
-                UPDATE_EVENT.wait()                 #PPO进程的等待位置 wait until get batch of data
+                UPDATE_EVENT.wait()                 #PPO进程的等待位置
                 self.update_old_pi()                # copy pi to old pi
                 data = [QUEUE.get() for _ in range(QUEUE.qsize())]  # collect data from all workers
                 data = np.vstack(data)
@@ -347,7 +350,7 @@ class Worker(object):
                     # 如果数据足够，就开始更新
                     if GLOBAL_UPDATE_COUNTER >= MIN_BATCH_SIZE:
                         ROLLING_EVENT.clear()   # stop collecting data
-                        UPDATE_EVENT.set()      # globalPPO update
+                        UPDATE_EVENT.set()      # global PPO update
 
                     if GLOBAL_EP >= EP_MAX:     # stop training
                         COORD.request_stop()    # 停止更新

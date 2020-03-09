@@ -145,7 +145,7 @@ class ACNet(object):
             self.mu, self.sigma = self.actor(buffer_s)                      #actor输出mu和sigma
             self.test = self.sigma[0]                                       #这里只是为了测试用
             self.mu, self.sigma = self.mu * A_BOUND[1], self.sigma + 1e-5   #mu需要映射到行动空间的范围
-            normal_dist = tfd.Normal(self.mu, self.sigma)  # no tf.contrib for tf2.0   根据mu和sigma创建正态分布
+            normal_dist = tfd.Normal(self.mu, self.sigma)                   #根据mu和sigma创建正态分布
 
             self.a_his = buffer_a                          # 求action在分布下的概率。float32
             log_prob = normal_dist.log_prob(self.a_his)
@@ -202,8 +202,8 @@ class Worker(object):
         total_step = 1
         buffer_s, buffer_a, buffer_r = [], [], []
         while not COORD.should_stop() and GLOBAL_EP < MAX_GLOBAL_EP:    # MAX_GLOBAL_EP最大训练EP
-            s = self.env.reset()            #重置环境
-            ep_r = 0                        #统计ep的总reward
+            s = self.env.reset()                                        #重置环境
+            ep_r = 0                                                    #统计ep的总reward
             while True:
                 # visualize Worker_0 during training
                 if self.name == 'Worker_0' and total_step % 30 == 0:    #worker_0,每30步渲染一次
