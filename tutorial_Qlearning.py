@@ -17,7 +17,6 @@ tensorlayer==2.0.0
 """
 
 import time
-
 import gym
 import numpy as np
 
@@ -72,7 +71,8 @@ for i in range(num_episodes):
         s = s1                  # 把下一状态赋值给s，准备开始下一步。
         if d ==True:            # 如果已经到达最终状态，就跳出for循环。(开始下一次迭代)
             break
-    
+
+##=================更新结束，打印结果=====================##
     #每次的总收获都放到rlist。可以通过打印看看算法效率。
     rList.append(rAll)          
     running_reward = r if running_reward is None else running_reward * 0.99 + r * 0.01
