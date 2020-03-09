@@ -45,23 +45,22 @@ args = parser.parse_args()
 
 #####################  hyper parameters  ####################
 
-ENV_NAME = 'Pendulum-v0'  # environment name
-RANDOMSEED = 1  # random seed
+ENV_NAME = 'Pendulum-v0'    # environment name
+RANDOMSEED = 1              # random seed
 
-LR_A = 0.001  # learning rate for actor
-LR_C = 0.002  # learning rate for critic
-GAMMA = 0.9  # reward discount
-TAU = 0.01  # soft replacement
-MEMORY_CAPACITY = 10000  # size of replay buffer
-BATCH_SIZE = 32  # update batchsize
+LR_A = 0.001                # learning rate for actor
+LR_C = 0.002                # learning rate for critic
+GAMMA = 0.9                 # reward discount
+TAU = 0.01                  # soft replacement
+MEMORY_CAPACITY = 10000     # size of replay buffer
+BATCH_SIZE = 32             # update batchsize
 
-MAX_EPISODES = 200  # total number of episodes for training
-MAX_EP_STEPS = 200  # total number of steps for each episode
-TEST_PER_EPISODES = 10  # test the model per episodes
-VAR = 3  # control exploration
+MAX_EPISODES = 200          # total number of episodes for training
+MAX_EP_STEPS = 200          # total number of steps for each episode
+TEST_PER_EPISODES = 10      # test the model per episodes
+VAR = 3                     # control exploration
 
 ###############################  DDPG  ####################################
-
 
 class DDPG(object):
     """
@@ -69,7 +68,8 @@ class DDPG(object):
     """
 
     def __init__(self, a_dim, s_dim, a_bound):
-        # memory用于储存跑的数据，保存个数MEMORY_CAPACITY，s_dim * 2 + a_dim + 1：分别是两个state，一个action，和一个reward
+        # memory用于储存跑的数据的数组：
+        # 保存个数MEMORY_CAPACITY，s_dim * 2 + a_dim + 1：分别是两个state，一个action，和一个reward
         self.memory = np.zeros((MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
         self.a_dim, self.s_dim, self.a_bound = a_dim, s_dim, a_bound
@@ -88,7 +88,7 @@ class DDPG(object):
             inputs = tl.layers.Input(input_state_shape, name='A_input')
             x = tl.layers.Dense(n_units=30, act=tf.nn.relu, W_init=W_init, b_init=b_init, name='A_l1')(inputs)
             x = tl.layers.Dense(n_units=a_dim, act=tf.nn.tanh, W_init=W_init, b_init=b_init, name='A_a')(x)
-            x = tl.layers.Lambda(lambda x: np.array(a_bound) * x)(x)    #注意这里，先用tanh把范围限定在[-1,1]之间，再进行映射
+            x = tl.layers.Lambda(lambda x: np.array(a_bound) * x)(x)            #注意这里，先用tanh把范围限定在[-1,1]之间，再进行映射
             return tl.models.Model(inputs=inputs, outputs=x, name='Actor' + name)
 
         #建立Critic网络，输入s，a。输出Q值
@@ -141,19 +141,18 @@ class DDPG(object):
         self.actor_opt = tf.optimizers.Adam(LR_A)
         self.critic_opt = tf.optimizers.Adam(LR_C)
 
-    #滑动平均更新
+
     def ema_update(self):
         """
-        Soft updating by exponential smoothing
-        :return: None
+        滑动平均更新
         """
         # 其实和之前的硬更新类似，不过在更新赋值之前，用一个ema.average。
-        paras = self.actor.trainable_weights + self.critic.trainable_weights    #获取要更新的参数
-        self.ema.apply(paras)   #主要是建立影子参数
+        paras = self.actor.trainable_weights + self.critic.trainable_weights    #获取要更新的参数包括actor和critic的
+        self.ema.apply(paras)                                                   #主要是建立影子参数
         for i, j in zip(self.actor_target.trainable_weights + self.critic_target.trainable_weights, paras):
-            i.assign(self.ema.average(j))   # 用滑动平均赋值
+            i.assign(self.ema.average(j))                                       # 用滑动平均赋值
 
-    # 简单，把s带进入，输出a
+    # 选择动作，把s带进入，输出a
     def choose_action(self, s):
         """
         Choose action
@@ -174,7 +173,7 @@ class DDPG(object):
         br = bt[:, -self.s_dim - 1:-self.s_dim]         #从bt获得数据r
         bs_ = bt[:, -self.s_dim:]                       #从bt获得数据s'
 
-        # Critic
+        # Critic：
         # Critic更新和DQN很像，不过target不是argmax了，是用critic_target计算出来的。
         # br + GAMMA * q_
         with tf.GradientTape() as tape:
@@ -186,12 +185,12 @@ class DDPG(object):
         c_grads = tape.gradient(td_error, self.critic.trainable_weights)
         self.critic_opt.apply_gradients(zip(c_grads, self.critic.trainable_weights))
 
-        # Actor
+        # Actor：
         # Actor的目标就是获取最多Q值的。
         with tf.GradientTape() as tape:
             a = self.actor(bs)
             q = self.critic([bs, a])
-            a_loss = -tf.reduce_mean(q)  # maximize the q：注意这里用负号，也就是离目标会越来越远的，就是越来越大。
+            a_loss = -tf.reduce_mean(q)  # 【敲黑板】：注意这里用负号，是梯度上升！也就是离目标会越来越远的，就是越来越大。
         a_grads = tape.gradient(a_loss, self.actor.trainable_weights)
         self.actor_opt.apply_gradients(zip(a_grads, self.actor.trainable_weights))
 
@@ -281,7 +280,9 @@ if __name__ == '__main__':
             for j in range(MAX_EP_STEPS):
                 # Add exploration noise
                 a = ddpg.choose_action(s)       #这里很简单，直接用actor估算出a动作
-                # 为了能保持开发，因此需要需要以a为均值，VAR为标准差，建立正态分布，再从正态分布采样出a
+
+                # 为了能保持开发，这里用了另外一种方式增加探索。
+                # 因此需要需要以a为均值，VAR为标准差，建立正态分布，再从正态分布采样出a
                 # 因为a是均值，所以a的概率是最大的。但a相对其他概率由多大，是靠VAR调整。这里我们其实可以增加更新VAR，动态调整a的确定性
                 # 然后进行裁剪
                 a = np.clip(np.random.normal(a, VAR), -2, 2)  
