@@ -11,7 +11,7 @@ For Q-Network, see tutorial_frozenlake_q_network.py
 EN: https://medium.com/emergent-future/simple-reinforcement-learning-with-tensorflow-part-0-q-learning-with-tables-and-neural-networks-d195264329d0#.5m3361vlw
 CN: https://zhuanlan.zhihu.com/p/25710327
 
-tensorflow==2.0.0a0
+tensorflow==2.0.00
 tensorlayer==2.0.0
 
 """
