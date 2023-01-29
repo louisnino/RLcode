@@ -47,7 +47,7 @@ for i in range(num_episodes):
 
     ## 重置环境初始状态
     episode_time = time.time()          #用于记录运行时间，我们可以通过比较运行时间判断算法效率。
-    s = env.reset()                     #重置初始状态。
+    s, _ = env.reset()                  #重置初始状态。
     rAll = 0                            #用于记录这次游戏的总奖励，这里先初始化为0
 
     ## 开始Qlearning算法
